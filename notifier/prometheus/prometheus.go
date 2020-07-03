@@ -70,6 +70,7 @@ func New(config json.RawMessage) (Notifier, error) {
 	return notifier, err
 }
 
+// Type returns the notifier package name
 func (Notifier) Type() string {
 	return Type
 }

@@ -19,7 +19,17 @@ var (
 	rootCmd        = &cobra.Command{
 		Use:   "checkup",
 		Short: "Perform checks on your services and sites",
-		Long:  `Checkup is health checks of any endpoints over HTTP,TCP,DNS,ICMP,TLS and Exec`,
+		Long: `Checkup is health checks of any endpoints over HTTP,TCP,DNS,ICMP,TLS and Exec
+
+Checkup will always look for a checkup.json file in
+the current working directory by default and use it.
+You can specify a different file location using the
+--config/-c flag.
+
+Running checkup without any arguments will invoke
+a single checkup and print results to stdout. To
+store the results of the check, use --store.
+`,
 		Run: func(cmd *cobra.Command, args []string) {
 			allHealthy := true
 

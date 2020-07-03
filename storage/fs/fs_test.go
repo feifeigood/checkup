@@ -89,7 +89,7 @@ func TestStorage(t *testing.T) {
 		t.Fatalf("StoreReader: expected test result title to be '%s', but got '%s'", results[0].Title, testResults[0].Title)
 	}
 
-	// Make sure check file is not deleted after maintain with CheckExpiry == 0
+	// Make sure check file is not deleted after maintain with CheckExpiry.Duration == 0
 	if err := specimen.Maintain(); err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -97,8 +97,8 @@ func TestStorage(t *testing.T) {
 		t.Fatalf("Expected not error calling Stat() on checkfile, got: %v", err)
 	}
 
-	// Make sure checkfile is deleted after maintain with CheckExpiry > 0
-	specimen.CheckExpiry = 1 * time.Nanosecond
+	// Make sure checkfile is deleted after maintain with CheckExpiry.Duration > 0
+	specimen.CheckExpiry.Duration = 1 * time.Nanosecond
 	if err := specimen.Maintain(); err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}

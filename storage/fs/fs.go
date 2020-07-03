@@ -37,8 +37,8 @@ type Storage struct {
 	// The URL corresopnding to fs.Dir
 	URL string `json:"url"`
 
-	// Check files old then CheckExpiry will be deleted.
-	CheckExpiry time.Duration `json:"check_expiry,omitempty"`
+	// Check files old then CheckExpiry.Duration will be deleted.
+	CheckExpiry types.Duration `json:"check_expiry,omitempty"`
 }
 
 // New creates a new Storage instance base on json config
@@ -126,9 +126,9 @@ func (fs Storage) Store(results []types.Result) error {
 	return fs.writeIndex(index)
 }
 
-// Maintain deletes check files that are older than fs.CheckExpiry.
+// Maintain deletes check files that are older than fs.CheckExpiry.Duration.
 func (fs Storage) Maintain() error {
-	if fs.CheckExpiry == 0 {
+	if fs.CheckExpiry.Duration == 0 {
 		return nil
 	}
 
@@ -152,7 +152,7 @@ func (fs Storage) Maintain() error {
 			continue
 		}
 
-		if time.Since(time.Unix(0, nsec)) > fs.CheckExpiry {
+		if time.Since(time.Unix(0, nsec)) > fs.CheckExpiry.Duration {
 			if err := os.Remove(filepath.Join(fs.Dir, f.Name())); err != nil {
 				return err
 			}

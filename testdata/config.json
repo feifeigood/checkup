@@ -8,7 +8,8 @@
     ],
     "storage": {
         "type": "fs",
-        "dir": "/tmp/checkup"
+        "dir": "/tmp/checkup",
+        "check_expiry": "30m"
     },
     "notifiers": [
         {
