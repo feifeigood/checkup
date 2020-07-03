@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/feifeigood/checkup/check/http"
+	"github.com/feifeigood/checkup/check/tcp"
 	"github.com/feifeigood/checkup/notifier/prometheus"
 	"github.com/feifeigood/checkup/storage/fs"
 	"github.com/feifeigood/checkup/types"
@@ -230,8 +231,8 @@ func checkerDecode(typeName string, config json.RawMessage) (Checker, error) {
 	// 	return exec.New(config)
 	case http.Type:
 		return http.New(config)
-	// case tcp.Type:
-	// 	return tcp.New(config)
+	case tcp.Type:
+		return tcp.New(config)
 	// case tls.Type:
 	// 	return tls.New(config)
 	default:
