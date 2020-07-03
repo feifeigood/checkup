@@ -17,7 +17,7 @@ import (
 var log = logrus.WithField("component", "checkup")
 
 // DefaultConcurrentChecks is how many checks, at most to perform concurrently
-var DefaultConcurrentChecks = 24
+var DefaultConcurrentChecks = 128
 
 // Checker can create a types.Result.
 type Checker interface {
@@ -96,6 +96,7 @@ func (c Checkup) Check() ([]types.Result, error) {
 		wg.Add(1)
 		go func(i int, checker Checker) {
 			results[i], errs[i] = checker.Check()
+			log.Debugf("== (%s)%s - %s - %s", results[i].Type, results[i].Title, results[i].Endpoint, results[i].Status())
 			<-throttle
 			wg.Done()
 		}(i, checker)

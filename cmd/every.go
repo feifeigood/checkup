@@ -6,9 +6,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
 
+var logLevel string
 var everyCmd = &cobra.Command{
 	Use:   "every",
 	Short: "Run checks indefinitely at an interval",
@@ -52,6 +54,12 @@ Examples:
 			log.Fatal(err)
 		}
 
+		lvl, err := logrus.ParseLevel(logLevel)
+		if err != nil {
+			log.Fatal(err)
+		}
+		logrus.SetLevel(lvl)
+
 		c := loadCheckup()
 		if len(c.Checkers) == 0 {
 			log.Fatal("no checkers configured")
@@ -66,5 +74,6 @@ Examples:
 }
 
 func init() {
+	everyCmd.Flags().StringVar(&logLevel, "log-level", "info", "Setting log level")
 	rootCmd.AddCommand(everyCmd)
 }

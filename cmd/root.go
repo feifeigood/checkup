@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"time"
 
 	nested "github.com/antonfisher/nested-logrus-formatter"
 	"github.com/feifeigood/checkup"
@@ -100,7 +101,8 @@ func init() {
 	rootCmd.Flags().BoolVar(&storageResults, "store", false, "Store checkup results")
 
 	logrus.SetFormatter(&nested.Formatter{
-		FieldsOrder: []string{"component"},
-		HideKeys:    true,
+		TimestampFormat: time.RFC3339,
+		FieldsOrder:     []string{"component"},
+		HideKeys:        true,
 	})
 }
