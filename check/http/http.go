@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/feifeigood/checkup/cmd"
 	"github.com/feifeigood/checkup/types"
 )
 
@@ -129,7 +128,7 @@ func (c Checker) Check() (types.Result, error) {
 
 	// Add customized User-Agent
 	if req.Header.Get("User-Agent") == "" {
-		req.Header.Add("User-Agent", fmt.Sprintf("checkup/%s", cmd.Version))
+		req.Header.Add("User-Agent", fmt.Sprintf("checkup/%s", "0.0.1"))
 	}
 
 	result.Times = c.doChecks(req)

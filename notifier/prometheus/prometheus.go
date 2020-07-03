@@ -1,8 +1,10 @@
 package prometheus
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/feifeigood/checkup/types"
 	prom "github.com/prometheus/client_golang/prometheus"
@@ -54,6 +56,9 @@ func init() {
 type Notifier struct {
 	Listen      string `json:"listen,omitempty"`
 	MetricsPath string `json:"metrics_path,omitempty"`
+	BasicAuth   bool   `json:"basic_auth,omitempty"`
+	Username    string `json:"username,omitempty"`
+	Password    string `json:"password,omitempty"`
 }
 
 // New creates a new Notifier based on json config and running http server
@@ -63,7 +68,11 @@ func New(config json.RawMessage) (Notifier, error) {
 
 	log.Infof("Running prometheus metrics handler listen: %s, metrics-path: %s", notifier.Listen, notifier.MetricsPath)
 	go func() {
-		http.Handle(notifier.MetricsPath, promhttp.Handler())
+		if notifier.BasicAuth {
+			http.Handle(notifier.MetricsPath, notifier.auth(promhttp.Handler()))
+		} else {
+			http.Handle(notifier.MetricsPath, promhttp.Handler())
+		}
 		log.Fatal(http.ListenAndServe(notifier.Listen, nil))
 	}()
 
@@ -88,4 +97,26 @@ func (p Notifier) Notify(results []types.Result) error {
 		}
 	}
 	return nil
+}
+
+func (p Notifier) auth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth := strings.SplitN(r.Header.Get("Authorization"), " ", 2)
+
+		if len(auth) != 2 || auth[0] != "Basic" {
+			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
+			http.Error(w, "authorization failed", http.StatusUnauthorized)
+			return
+		}
+
+		payload, _ := base64.StdEncoding.DecodeString(auth[1])
+		pair := strings.SplitN(string(payload), ":", 2)
+
+		if len(pair) != 2 || pair[0] != p.Username || pair[1] != p.Password {
+			http.Error(w, "authorization failed", http.StatusUnauthorized)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
