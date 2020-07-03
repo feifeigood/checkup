@@ -6,9 +6,11 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
+	"github.com/feifeigood/checkup/cmd"
 	"github.com/feifeigood/checkup/types"
 )
 
@@ -26,6 +28,9 @@ type Checker struct {
 	// UpStatus is the HTTP status code expected by
 	// a healthy endpoint. Default is http.StatusOK.
 	UpStatus int `json:"up_status,omitempty"`
+
+	// Proxy is the proxy url used for ProxyClient
+	Proxy string `json:"proxy,omitempty"`
 
 	// ThresholdRTT is the maximum round trip time to
 	// allow for a healthy endpoint. If non-zero and a
@@ -99,6 +104,14 @@ func (c Checker) Check() (types.Result, error) {
 	result.Title = c.Name
 	result.Endpoint = c.URL
 
+	if c.Proxy != "" {
+		client, err := newProxyClient(c.Proxy)
+		if err != nil {
+			return result, err
+		}
+		c.Client = client
+	}
+
 	req, err := http.NewRequest("GET", c.URL, nil)
 	if err != nil {
 		return result, err
@@ -112,6 +125,11 @@ func (c Checker) Check() (types.Result, error) {
 				req.Host = header[0]
 			}
 		}
+	}
+
+	// Add customized User-Agent
+	if req.Header.Get("User-Agent") == "" {
+		req.Header.Add("User-Agent", fmt.Sprintf("checkup/%s", cmd.Version))
 	}
 
 	result.Times = c.doChecks(req)
@@ -235,4 +253,31 @@ var DefaultHTTPClient = &http.Client{
 		return http.ErrUseLastResponse
 	},
 	Timeout: 10 * time.Second,
+}
+
+func newProxyClient(proxy string) (*http.Client, error) {
+	proxyURL, err := url.Parse(proxy)
+	if err != nil {
+		return nil, err
+	}
+
+	return &http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyURL(proxyURL),
+			Dial: (&net.Dialer{
+				Timeout:   10 * time.Second,
+				KeepAlive: 0,
+			}).Dial,
+			TLSHandshakeTimeout:   5 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+			MaxIdleConnsPerHost:   1,
+			DisableCompression:    true,
+			DisableKeepAlives:     true,
+			ResponseHeaderTimeout: 5 * time.Second,
+		},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+		Timeout: 10 * time.Second,
+	}, nil
 }
