@@ -1,0 +1,20 @@
+{
+    "checkers": [
+        {
+            "type": "http",
+            "endpoint_name": "www.baidu.com",
+            "endpoint_url": "http://www.baidu.com"
+        }
+    ],
+    "storage": {
+        "type": "fs",
+        "dir": "/tmp/checkup"
+    },
+    "notifiers": [
+        {
+            "type": "prometheus",
+            "listen": ":9193",
+            "metrics_path": "/metrics"
+        }
+    ]
+}
