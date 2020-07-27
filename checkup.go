@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/feifeigood/checkup/check/exec"
 	"github.com/feifeigood/checkup/check/http"
 	"github.com/feifeigood/checkup/check/tcp"
 	"github.com/feifeigood/checkup/notifier/prometheus"
@@ -228,8 +229,8 @@ func checkerDecode(typeName string, config json.RawMessage) (Checker, error) {
 	switch typeName {
 	// case dns.Type:
 	// 	return dns.New(config)
-	// case exec.Type:
-	// 	return exec.New(config)
+	case exec.Type:
+		return exec.New(config)
 	case http.Type:
 		return http.New(config)
 	case tcp.Type:
