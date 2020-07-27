@@ -11,6 +11,7 @@ Checkup currently supports these checkers:
 
 - HTTP
 - TCP(+TLS)
+- EXEC
 
 Checkup implements these storage providers:
 
@@ -70,6 +71,16 @@ We will show JSON samples below
     "endpoint_name":"example",
     "endpoint_url":"127.0.0.1:80",
     "timeout":"5s"
+}
+```
+
+#### **EXEC Checkers**
+```code
+{
+    "type": "exec",
+    "name": "hpssacli_checker",
+    "command": "/bin/bash",
+    "arguments": ["-c","python hpssacli.py > /var/lib/node_exporter/textfile_collector/hpssacli.prom.$$;mv /var/lib/node_exporter/textfile_collector/hpssacli.prom.$$ /var/lib/node_exporter/textfile_collector/hpssacli.prom"]
 }
 ```
 

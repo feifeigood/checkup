@@ -87,7 +87,8 @@ func (c Checker) Check() (types.Result, error) {
 
 	result := types.NewResult()
 	result.Title = c.Name
-	result.Endpoint = c.Command
+	result.Type = c.Type()
+	result.Endpoint = strings.TrimSpace(fmt.Sprintf("%s %s", c.Command, strings.Join(c.Arguments, " ")))
 	result.Times = c.doChecks()
 
 	return c.conclude(result), nil
