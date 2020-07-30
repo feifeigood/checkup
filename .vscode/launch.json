@@ -5,6 +5,23 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "checkup-server",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}/cmd/checkup/main.go",
+            "env": {},
+            "args": [
+                "server",
+                "-c",
+                "${workspaceFolder}/testdata/config.json",
+                "--every",
+                "5s",
+                "--log-level",
+                "debug"
+            ]
+        },
+        {
             "name": "checkup",
             "type": "go",
             "request": "launch",

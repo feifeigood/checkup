@@ -3,15 +3,17 @@ package checkup
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"sync"
 	"time"
 
 	"github.com/feifeigood/checkup/check/exec"
 	"github.com/feifeigood/checkup/check/http"
 	"github.com/feifeigood/checkup/check/tcp"
-	"github.com/feifeigood/checkup/notifier/prometheus"
+	"github.com/feifeigood/checkup/notifier/mail"
 	"github.com/feifeigood/checkup/storage/fs"
 	"github.com/feifeigood/checkup/types"
+	prom "github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 )
 
@@ -24,6 +26,7 @@ var DefaultConcurrentChecks = 128
 type Checker interface {
 	Type() string
 	Check() (types.Result, error)
+	CheckInterval() time.Duration
 }
 
 // Notifier can notify a types.Result.
@@ -259,10 +262,8 @@ func storageDecode(typeName string, config json.RawMessage) (Storage, error) {
 
 func notifierDecode(typeName string, config json.RawMessage) (Notifier, error) {
 	switch typeName {
-	case prometheus.Type:
-		return prometheus.New(config)
-	// case mail.Type:
-	// 	return mail.New(config)
+	case mail.Type:
+		return mail.New(config)
 	// case slack.Type:
 	// 	return slack.New(config)
 	// case mailgun.Type:
@@ -272,4 +273,241 @@ func notifierDecode(typeName string, config json.RawMessage) (Notifier, error) {
 	default:
 		return nil, fmt.Errorf(errUnknownNotifierType, typeName)
 	}
+}
+
+// Controller represents checker controller
+type Controller struct {
+	configFile string
+	interval   time.Duration
+
+	checkup Checkup
+
+	logger   *logrus.Entry
+	cond     chan struct{}
+	throttle chan struct{}
+	rch      chan types.Result
+	wg       *sync.WaitGroup
+	rwl      sync.RWMutex
+}
+
+// NewController creates a checkup controller object
+func NewController(configFile string, interval time.Duration) *Controller {
+	return &Controller{
+		configFile: configFile,
+		interval:   interval,
+		rch:        make(chan types.Result, 100),
+		logger:     logrus.WithField("component", "controller"),
+	}
+}
+
+func (ctrl *Controller) initCheckup() (Checkup, error) {
+	ctrl.rwl.Lock()
+	defer ctrl.rwl.Unlock()
+
+	var c Checkup
+	configBytes, err := ioutil.ReadFile(ctrl.configFile)
+	if err != nil {
+		return c, err
+	}
+
+	err = json.Unmarshal(configBytes, &c)
+	if err != nil {
+		return c, err
+	}
+
+	return c, nil
+}
+
+func (ctrl *Controller) runCheck(checker Checker) (types.Result, error) {
+	ctrl.throttle <- struct{}{}
+	result, err := checker.Check()
+	if err != nil {
+		<-ctrl.throttle
+		return result, err
+	}
+	ctrl.logger.Debugf("== (%s)%s - %s - %s", result.Type, result.Title, result.Endpoint, result.Status())
+	<-ctrl.throttle
+
+	for _, service := range ctrl.checkup.Notifiers {
+		err := service.Notify([]types.Result{result})
+		if err != nil {
+			ctrl.logger.Errorf("sending notifications for %s: %s", service.Type(), err)
+		}
+	}
+
+	// prometheus notifier
+	checksAll.WithLabelValues(result.Type, result.Title, result.Endpoint).Inc()
+	if result.Healthy {
+		checksHealthy.WithLabelValues(result.Type, result.Title, result.Endpoint).Inc()
+	} else if result.Degraded {
+		checksDegraded.WithLabelValues(result.Type, result.Title, result.Endpoint).Inc()
+	} else {
+		checksDown.WithLabelValues(result.Type, result.Title, result.Endpoint).Inc()
+	}
+
+	return result, nil
+}
+
+func (ctrl *Controller) flush(results []types.Result) {
+
+	ctrl.rwl.Lock()
+	defer ctrl.rwl.Unlock()
+
+	err := ctrl.checkup.Storage.Store(results)
+	if err != nil {
+		ctrl.logger.Errorf("%v", err)
+		return
+	}
+
+	if m, ok := ctrl.checkup.Storage.(Maintainer); ok {
+		err = m.Maintain()
+		if err != nil {
+			ctrl.logger.Errorf("%v", err)
+		}
+	}
+}
+
+func (ctrl *Controller) runCheckup() {
+	ctrl.wg = &sync.WaitGroup{}
+
+	for _, checker := range ctrl.checkup.Checkers {
+		checker := checker
+		ctrl.wg.Add(1)
+
+		go func() {
+			defer ctrl.wg.Done()
+
+			ticker := time.NewTicker(ctrl.interval)
+			if checker.CheckInterval() > 0 {
+				ticker = time.NewTicker(checker.CheckInterval())
+			}
+
+			for {
+				select {
+				case <-ticker.C:
+					result, err := ctrl.runCheck(checker)
+					if err != nil {
+						ctrl.logger.Errorf("%v", err)
+					}
+					ctrl.rch <- result
+				case <-ctrl.cond:
+					return
+				}
+			}
+		}()
+	}
+
+}
+
+// Run start background controller processes
+func (ctrl *Controller) Run() {
+	c, err := ctrl.initCheckup()
+	if err != nil {
+		ctrl.logger.Fatalf("could not init checkup: %v", err)
+	}
+
+	if c.ConcurrentChecks == 0 {
+		c.ConcurrentChecks = DefaultConcurrentChecks
+	}
+
+	if c.ConcurrentChecks < 0 {
+		ctrl.logger.Fatalf("invalid value for Concurrentchecks: %d (must be set > 0)", c.ConcurrentChecks)
+	}
+
+	// init throttle
+	ctrl.throttle = make(chan struct{}, c.ConcurrentChecks)
+	ctrl.cond = make(chan struct{})
+	ctrl.checkup = c
+
+	go func() {
+		ticker := time.NewTicker(time.Duration(15 * time.Second))
+		results := make([]types.Result, 0)
+
+		maxBufferSize := 256
+
+		for {
+			select {
+			case r, ok := <-ctrl.rch:
+				if ok {
+					if len(results) >= maxBufferSize {
+						ctrl.flush(results)
+						results = results[:0]
+					}
+					results = append(results, r)
+				}
+			case <-ticker.C:
+				if len(results) > 0 {
+					ctrl.flush(results)
+					results = results[:0]
+				}
+			}
+		}
+	}()
+
+	go ctrl.runCheckup()
+
+	ctrl.logger.Info("started checkup process in background")
+}
+
+// Reload refresh checkup configuration file on runtime
+func (ctrl *Controller) Reload() {
+	c, err := ctrl.initCheckup()
+	if err != nil {
+		ctrl.logger.Errorf("could not reload checkup: %v", err)
+		return
+	}
+
+	// shutdown current checker goroutine
+	close(ctrl.cond)
+
+	// wait all goroutine completed
+	ctrl.wg.Wait()
+	ctrl.logger.Infof("all checker goroutine had completed, now reload it.")
+
+	if c.ConcurrentChecks <= 0 {
+		ctrl.logger.Warnf("ignore invalid value for Concurrentchecks: %d (must be set > 0)", c.ConcurrentChecks)
+		c.ConcurrentChecks = ctrl.checkup.ConcurrentChecks
+	}
+
+	ctrl.throttle = make(chan struct{}, c.ConcurrentChecks)
+	ctrl.cond = make(chan struct{})
+	ctrl.checkup = c
+
+	go ctrl.runCheckup()
+	ctrl.logger.Infof("checkup configuration reload successfully.")
+}
+
+const namespace = "checkup"
+
+var (
+	checksAll = prom.NewCounterVec(prom.CounterOpts{
+		Namespace: namespace,
+		Name:      "checks_total",
+		Help:      "Total of checks number by checker",
+	}, []string{"type", "title", "endpoint"})
+
+	checksHealthy = prom.NewCounterVec(prom.CounterOpts{
+		Namespace: namespace,
+		Name:      "checks_healthy",
+		Help:      "Total of healthy checks number by checker",
+	}, []string{"type", "title", "endpoint"})
+
+	checksDegraded = prom.NewCounterVec(prom.CounterOpts{
+		Namespace: namespace,
+		Name:      "checks_degraded",
+		Help:      "Total of degraded checks number by checker",
+	}, []string{"type", "title", "endpoint"})
+
+	checksDown = prom.NewCounterVec(prom.CounterOpts{
+		Namespace: namespace,
+		Name:      "checks_down",
+		Help:      "Total of down checks number by checker",
+	}, []string{"type", "title", "endpoint"})
+)
+
+func init() {
+	prom.MustRegister(checksAll)
+	prom.MustRegister(checksHealthy)
+	prom.MustRegister(checksDegraded)
+	prom.MustRegister(checksDown)
 }

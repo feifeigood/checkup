@@ -56,6 +56,9 @@ type Checker struct {
 	// Attempts is how many requests the client will
 	// make to the endpoint in a single check.
 	Attempts int `json:"attempts,omitempty"`
+
+	// Interval override every subcommand interval If set.
+	Interval types.Duration `json:"interval,omitempty"`
 }
 
 // Type returns the checker package name
@@ -68,6 +71,11 @@ func New(config json.RawMessage) (Checker, error) {
 	var checker Checker
 	err := json.Unmarshal(config, &checker)
 	return checker, err
+}
+
+// CheckInterval returns the checker specified check interval to override every subcommand
+func (c Checker) CheckInterval() time.Duration {
+	return c.Interval.Duration
 }
 
 // Check performs checks using c according to its configuration.

@@ -64,6 +64,9 @@ type Checker struct {
 	// quickly in succession. By default, no waiting
 	// occurs between attempts.
 	AttemptSpacing time.Duration `json:"attempt_spacing,omitempty"`
+
+	// Interval override every subcommand interval If set.
+	Interval types.Duration `json:"interval,omitempty"`
 }
 
 // New creates a new Checker instance based on json config
@@ -76,6 +79,11 @@ func New(config json.RawMessage) (Checker, error) {
 // Type returns the checker package name
 func (Checker) Type() string {
 	return Type
+}
+
+// CheckInterval returns the checker specified check interval to override every subcommand
+func (c Checker) CheckInterval() time.Duration {
+	return c.Interval.Duration
 }
 
 // Check performs checks using c according to its configuration.
