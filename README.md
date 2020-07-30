@@ -94,15 +94,6 @@ We will show JSON samples below
 }
 ```
 
-#### **Prometheus notifier**
-
-```code
-{
-    "type": "prometheus",
-    "listen": ":9193",
-    "metrics_path": "/metrics"
-}
-```
 
 ## Building Locally
 ```code

@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 
+## [0.1.0] 2020-07-30
+### Add
+- Support mail notifier
+- Support checker config interval
+
+### Changed
+- Add apiserver subcommand instead of every subcommand
+- Basic Auth Password using hashed password
+
+### Remove
+- Remove prometheus notifier
+
+
 ## [0.0.2] 2020-07-27
 ### Added
 - Support Exec Checker
