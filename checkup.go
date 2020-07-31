@@ -381,6 +381,7 @@ func (ctrl *Controller) runCheckup() {
 			if checker.CheckInterval() > 0 {
 				ticker = time.NewTicker(checker.CheckInterval())
 			}
+			defer ticker.Stop()
 
 			for {
 				select {
@@ -421,6 +422,8 @@ func (ctrl *Controller) Run() {
 
 	go func() {
 		ticker := time.NewTicker(time.Duration(15 * time.Second))
+		defer ticker.Stop()
+
 		results := make([]types.Result, 0)
 
 		maxBufferSize := 256
