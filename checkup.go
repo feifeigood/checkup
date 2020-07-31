@@ -282,12 +282,10 @@ type Controller struct {
 
 	checkup Checkup
 
-	logger   *logrus.Entry
-	cond     chan struct{}
-	throttle chan struct{}
-	rch      chan types.Result
-	wg       *sync.WaitGroup
-	rwl      sync.RWMutex
+	logger *logrus.Entry
+	cond   chan struct{}
+	reload chan struct{}
+	wg     *sync.WaitGroup
 }
 
 // NewController creates a checkup controller object
@@ -295,15 +293,12 @@ func NewController(configFile string, interval time.Duration) *Controller {
 	return &Controller{
 		configFile: configFile,
 		interval:   interval,
-		rch:        make(chan types.Result, 100),
+		reload:     make(chan struct{}),
 		logger:     logrus.WithField("component", "controller"),
 	}
 }
 
 func (ctrl *Controller) initCheckup() (Checkup, error) {
-	ctrl.rwl.Lock()
-	defer ctrl.rwl.Unlock()
-
 	var c Checkup
 	configBytes, err := ioutil.ReadFile(ctrl.configFile)
 	if err != nil {
@@ -318,22 +313,15 @@ func (ctrl *Controller) initCheckup() (Checkup, error) {
 	return c, nil
 }
 
-func (ctrl *Controller) runCheck(checker Checker) (types.Result, error) {
-	ctrl.throttle <- struct{}{}
+func (ctrl *Controller) runCheck(checker Checker, throttle chan struct{}) (types.Result, error) {
+	throttle <- struct{}{}
 	result, err := checker.Check()
 	if err != nil {
-		<-ctrl.throttle
+		<-throttle
 		return result, err
 	}
 	ctrl.logger.Debugf("== (%s)%s - %s - %s", result.Type, result.Title, result.Endpoint, result.Status())
-	<-ctrl.throttle
-
-	for _, service := range ctrl.checkup.Notifiers {
-		err := service.Notify([]types.Result{result})
-		if err != nil {
-			ctrl.logger.Errorf("sending notifications for %s: %s", service.Type(), err)
-		}
-	}
+	<-throttle
 
 	// prometheus notifier
 	checksAll.WithLabelValues(result.Type, result.Title, result.Endpoint).Inc()
@@ -348,27 +336,10 @@ func (ctrl *Controller) runCheck(checker Checker) (types.Result, error) {
 	return result, nil
 }
 
-func (ctrl *Controller) flush(results []types.Result) {
-
-	ctrl.rwl.Lock()
-	defer ctrl.rwl.Unlock()
-
-	err := ctrl.checkup.Storage.Store(results)
-	if err != nil {
-		ctrl.logger.Errorf("%v", err)
-		return
-	}
-
-	if m, ok := ctrl.checkup.Storage.(Maintainer); ok {
-		err = m.Maintain()
-		if err != nil {
-			ctrl.logger.Errorf("%v", err)
-		}
-	}
-}
-
 func (ctrl *Controller) runCheckup() {
 	ctrl.wg = &sync.WaitGroup{}
+
+	throttle := make(chan struct{}, ctrl.checkup.ConcurrentChecks)
 
 	for _, checker := range ctrl.checkup.Checkers {
 		checker := checker
@@ -386,18 +357,18 @@ func (ctrl *Controller) runCheckup() {
 			for {
 				select {
 				case <-ticker.C:
-					result, err := ctrl.runCheck(checker)
-					if err != nil {
-						ctrl.logger.Errorf("%v", err)
-					}
-					ctrl.rch <- result
+					go func() {
+						_, err := ctrl.runCheck(checker, throttle)
+						if err != nil {
+							ctrl.logger.Errorf("%v", err)
+						}
+					}()
 				case <-ctrl.cond:
 					return
 				}
 			}
 		}()
 	}
-
 }
 
 // Run start background controller processes
@@ -416,36 +387,8 @@ func (ctrl *Controller) Run() {
 	}
 
 	// init throttle
-	ctrl.throttle = make(chan struct{}, c.ConcurrentChecks)
 	ctrl.cond = make(chan struct{})
 	ctrl.checkup = c
-
-	go func() {
-		ticker := time.NewTicker(time.Duration(15 * time.Second))
-		defer ticker.Stop()
-
-		results := make([]types.Result, 0)
-
-		maxBufferSize := 256
-
-		for {
-			select {
-			case r, ok := <-ctrl.rch:
-				if ok {
-					if len(results) >= maxBufferSize {
-						ctrl.flush(results)
-						results = results[:0]
-					}
-					results = append(results, r)
-				}
-			case <-ticker.C:
-				if len(results) > 0 {
-					ctrl.flush(results)
-					results = results[:0]
-				}
-			}
-		}
-	}()
 
 	go ctrl.runCheckup()
 
@@ -454,6 +397,7 @@ func (ctrl *Controller) Run() {
 
 // Reload refresh checkup configuration file on runtime
 func (ctrl *Controller) Reload() {
+	ctrl.reload <- struct{}{}
 	c, err := ctrl.initCheckup()
 	if err != nil {
 		ctrl.logger.Errorf("could not reload checkup: %v", err)
@@ -472,12 +416,12 @@ func (ctrl *Controller) Reload() {
 		c.ConcurrentChecks = ctrl.checkup.ConcurrentChecks
 	}
 
-	ctrl.throttle = make(chan struct{}, c.ConcurrentChecks)
 	ctrl.cond = make(chan struct{})
 	ctrl.checkup = c
 
 	go ctrl.runCheckup()
 	ctrl.logger.Infof("checkup configuration reload successfully.")
+	<-ctrl.reload
 }
 
 const namespace = "checkup"
