@@ -293,7 +293,7 @@ func NewController(configFile string, interval time.Duration) *Controller {
 	return &Controller{
 		configFile: configFile,
 		interval:   interval,
-		reload:     make(chan struct{}),
+		reload:     make(chan struct{}, 1),
 		logger:     logrus.WithField("component", "controller"),
 	}
 }
