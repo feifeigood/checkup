@@ -61,7 +61,7 @@ type Checker struct {
 	Every types.Duration `json:"every,omitempty"`
 
 	// Privileged choose protocol is ip or udp
-	Privileged bool `json:"-"`
+	Privileged bool `json:"privileged,omitempty"`
 }
 
 // New creates a new Checker instance based on json config
@@ -98,12 +98,6 @@ func (c Checker) Check() (types.Result, error) {
 
 	if c.Interval.Duration < 1 {
 		c.Interval.Duration = DefaultInterval
-	}
-
-	// try privileged
-	if !c.Privileged {
-		// TODO: ensure had privileged
-
 	}
 
 	result := types.NewResult()
