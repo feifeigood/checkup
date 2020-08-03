@@ -23,6 +23,24 @@
             "endpoint_name": "unknow_healthy",
             "endpoint_url": "45.40.58.68:81",
             "timeout": "5s"
+        },
+        {
+            "type": "icmp",
+            "endpoint_name": "icmp_healthy",
+            "endpoint_url": "128.1.112.74",
+            "tolerant_loss": 5,
+            "count": 5,
+            "timeout": "5s",
+            "interval": "1s"
+        },
+        {
+            "type": "icmp",
+            "endpoint_name": "icmp_down",
+            "endpoint_url": "192.168.1.1",
+            "tolerant_loss": 0,
+            "count": 5,
+            "timeout": "5s",
+            "interval": "1s"
         }
     ],
     "storage": {

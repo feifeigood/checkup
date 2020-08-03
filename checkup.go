@@ -9,6 +9,7 @@ import (
 
 	"github.com/feifeigood/checkup/check/exec"
 	"github.com/feifeigood/checkup/check/http"
+	"github.com/feifeigood/checkup/check/icmp"
 	"github.com/feifeigood/checkup/check/tcp"
 	"github.com/feifeigood/checkup/notifier/mail"
 	"github.com/feifeigood/checkup/storage/fs"
@@ -232,6 +233,8 @@ func checkerDecode(typeName string, config json.RawMessage) (Checker, error) {
 	switch typeName {
 	// case dns.Type:
 	// 	return dns.New(config)
+	case icmp.Type:
+		return icmp.New(config)
 	case exec.Type:
 		return exec.New(config)
 	case http.Type:
