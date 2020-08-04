@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/feifeigood/checkup/types"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 )
 
@@ -14,12 +15,32 @@ const Type = "icmp"
 
 // DefaultPacketCount default send icmp packet
 const (
-	DefaultPacketCount = 5
-	DefaultTimeout     = 5 * time.Second
-	DefaultInterval    = 1 * time.Second
+	DefaultPacketCount = 10
+	DefaultTimeout     = 10 * time.Second
+	DefaultInterval    = 500 * time.Millisecond
 )
 
-var log = logrus.WithField("component", "icmp")
+var (
+	log        = logrus.WithField("component", "icmp")
+	healthy    *prometheus.GaugeVec
+	packetLoss *prometheus.GaugeVec
+)
+
+func init() {
+
+	healthy = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "checkup_icmp_healthy",
+		Help: "Using icmp checker to checks endpoint is healthy",
+	}, []string{"title", "endpoint"})
+
+	packetLoss = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "checkup_icmp_packet_loss",
+		Help: "Using icmp checker checks the percentage of packets lost",
+	}, []string{"title", "endpoint"})
+
+	prometheus.MustRegister(healthy)
+	prometheus.MustRegister(packetLoss)
+}
 
 // Checker implements a Checker for ICMP endpoints.
 type Checker struct {
@@ -28,6 +49,9 @@ type Checker struct {
 
 	// URL is the URL of the endpoint.
 	URL string `json:"endpoint_url"`
+
+	// Privileged choose protocol is ip or udp
+	Privileged bool `json:"privileged,omitempty"`
 
 	// Timeout is the maximum time to wait for a
 	// ICMP EchoReply message
@@ -41,9 +65,8 @@ type Checker struct {
 	// packets. If zero using default value 5
 	Count int `json:"count,omitempty"`
 
-	// TolerantLoss is the ICMP packet percentage lost tolerant by
-	// a healthy endpoint. Default is 0.
-	TolerantLoss float64 `json:"tolerant_loss,omitempty"`
+	// Every
+	Every types.Duration `json:"every,omitempty"`
 
 	// ThresholdRTT is the maximum round trip time to
 	// allow for a healthy endpoint. If non-zero and a
@@ -57,33 +80,29 @@ type Checker struct {
 	// make to the endpoint in a single check.
 	Attempts int `json:"attempts,omitempty"`
 
-	// Every
-	Every types.Duration `json:"every,omitempty"`
-
-	// Privileged choose protocol is ip or udp
-	Privileged bool `json:"privileged,omitempty"`
+	stats *Statistics
 }
 
 // New creates a new Checker instance based on json config
-func New(config json.RawMessage) (Checker, error) {
+func New(config json.RawMessage) (*Checker, error) {
 	var checker Checker
 	err := json.Unmarshal(config, &checker)
-	return checker, err
+	return &checker, err
 }
 
 // Type returns the checker package name
-func (Checker) Type() string {
+func (c *Checker) Type() string {
 	return Type
 }
 
 // GetEvery returns the checker specified check interval to override every subcommand
-func (c Checker) GetEvery() time.Duration {
+func (c *Checker) GetEvery() time.Duration {
 	return c.Every.Duration
 }
 
 // Check performs checks using c according to its configuration.
 // An error is only returned if there is a configuration error.
-func (c Checker) Check() (types.Result, error) {
+func (c *Checker) Check() (types.Result, error) {
 	if c.Attempts < 1 {
 		c.Attempts = 1
 	}
@@ -110,7 +129,7 @@ func (c Checker) Check() (types.Result, error) {
 }
 
 // doChecks executes and returns each attempt.
-func (c Checker) doChecks() types.Attempts {
+func (c *Checker) doChecks() types.Attempts {
 	checks := make(types.Attempts, c.Attempts)
 
 	pinger, _ := NewPinger(c.URL)
@@ -129,21 +148,23 @@ func (c Checker) doChecks() types.Attempts {
 			checks[i].Error = err.Error()
 			continue
 		}
-		err = c.checkDown(pinger.Statistics())
+		c.stats = pinger.Statistics()
+
+		err = c.checkDown(c.stats)
 		if err != nil {
 			checks[i].Error = err.Error()
 		}
 	}
+
 	return checks
 }
 
-// checkDown checks whether the endpoint is down based on resp and
-// the configuration of c. It returns a non-nil error if down.
-// Note that it does not check for degraded response.
-func (c Checker) checkDown(stats *Statistics) error {
-	if stats.PacketLoss > c.TolerantLoss {
-		return fmt.Errorf("icmp packet loss(%.2f) greater than tolerant loss(%.2f)", stats.PacketLoss, c.TolerantLoss)
+func (c *Checker) checkDown(stats *Statistics) error {
+
+	if stats.PacketLoss == 100 {
+		return fmt.Errorf("didn't receive any icmp packets")
 	}
+
 	return nil
 }
 
@@ -151,8 +172,16 @@ func (c Checker) checkDown(stats *Statistics) error {
 // computes remaining values needed to fill out the result.
 // It detects degraded (high-latency) responses and makes
 // the conclusion about the result's status.
-func (c Checker) conclude(result types.Result) types.Result {
+func (c *Checker) conclude(result types.Result) types.Result {
 	result.ThresholdRTT = c.ThresholdRTT
+
+	if c.stats == nil {
+		healthy.WithLabelValues(result.Title, result.Endpoint).Set(float64(0))
+	} else {
+		healthy.WithLabelValues(result.Title, result.Endpoint).Set(float64(1))
+		packetLoss.WithLabelValues(result.Title, result.Endpoint).Set(c.stats.PacketLoss)
+	}
+	c.stats = nil
 
 	// Check errors (down)
 	for i := range result.Times {

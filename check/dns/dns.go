@@ -7,12 +7,29 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/sirupsen/logrus"
 
 	"github.com/feifeigood/checkup/types"
 )
 
 // Type should match the package name
 const Type = "dns"
+
+var (
+	log     = logrus.WithField("component", "dns")
+	healthy *prometheus.GaugeVec
+)
+
+func init() {
+
+	healthy = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "checkup_dns_healthy",
+		Help: "Using dns checker to checks endpoint is healthy",
+	}, []string{"title", "endpoint", "host"})
+
+	prometheus.MustRegister(healthy)
+}
 
 // Checker implements a Checker for TCP endpoints.
 type Checker struct {
@@ -38,20 +55,20 @@ type Checker struct {
 }
 
 // New creates a new Checker instance based on json config
-func New(config json.RawMessage) (Checker, error) {
+func New(config json.RawMessage) (*Checker, error) {
 	var checker Checker
 	err := json.Unmarshal(config, &checker)
-	return checker, err
+	return &checker, err
 }
 
 // Type returns the checker package name
-func (Checker) Type() string {
+func (c *Checker) Type() string {
 	return Type
 }
 
 // Check performs checks using c according to its configuration.
 // An error is only returned if there is a configuration error.
-func (c Checker) Check() (types.Result, error) {
+func (c *Checker) Check() (types.Result, error) {
 	if c.Attempts < 1 {
 		c.Attempts = 1
 	}
@@ -65,7 +82,7 @@ func (c Checker) Check() (types.Result, error) {
 }
 
 // doChecks executes and returns each attempt.
-func (c Checker) doChecks() types.Attempts {
+func (c *Checker) doChecks() types.Attempts {
 	var conn net.Conn
 
 	timeout := c.Timeout
@@ -106,16 +123,19 @@ func (c Checker) doChecks() types.Attempts {
 // computes remaining values needed to fill out the result.
 // It detects degraded (high-latency) responses and makes
 // the conclusion about the result's status.
-func (c Checker) conclude(result types.Result) types.Result {
+func (c *Checker) conclude(result types.Result) types.Result {
 	result.ThresholdRTT = c.ThresholdRTT
 
 	// Check errors (down)
 	for i := range result.Times {
 		if result.Times[i].Error != "" {
 			result.Down = true
+			healthy.WithLabelValues(result.Title, result.Endpoint, c.Host).Set(float64(0))
 			return result
 		}
 	}
+
+	healthy.WithLabelValues(result.Title, result.Endpoint, c.Host).Set(float64(1))
 
 	// Check round trip time (degraded)
 	if c.ThresholdRTT > 0 {

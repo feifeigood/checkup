@@ -11,10 +11,25 @@ import (
 	"time"
 
 	"github.com/feifeigood/checkup/types"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // Type should match the package name
 const Type = "http"
+
+var (
+	healthy *prometheus.GaugeVec
+)
+
+func init() {
+
+	healthy = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "checkup_http_healthy",
+		Help: "Using http checker to checks endpoint is healthy",
+	}, []string{"title", "endpoint"})
+
+	prometheus.MustRegister(healthy)
+}
 
 // Checker implements a Checker for HTTP endpoints.
 type Checker struct {
@@ -30,6 +45,13 @@ type Checker struct {
 
 	// Proxy is the proxy url used for ProxyClient
 	Proxy string `json:"proxy,omitempty"`
+
+	// Headers contains headers to added to the request
+	// that is sent for the check
+	Headers http.Header `json:"headers,omitempty"`
+
+	// Every override every subcommand interval If set.
+	Every types.Duration `json:"every,omitempty"`
 
 	// ThresholdRTT is the maximum round trip time to
 	// allow for a healthy endpoint. If non-zero and a
@@ -70,35 +92,28 @@ type Checker struct {
 	// requests. If not set, DefaultHTTPClient is
 	// used.
 	Client *http.Client `json:"-"`
-
-	// Headers contains headers to added to the request
-	// that is sent for the check
-	Headers http.Header `json:"headers,omitempty"`
-
-	// Every override every subcommand interval If set.
-	Every types.Duration `json:"every,omitempty"`
 }
 
 // New creates a new Checker instance based on json config
-func New(config json.RawMessage) (Checker, error) {
+func New(config json.RawMessage) (*Checker, error) {
 	var checker Checker
 	err := json.Unmarshal(config, &checker)
-	return checker, err
+	return &checker, err
 }
 
 // Type returns the checker package name
-func (Checker) Type() string {
+func (c *Checker) Type() string {
 	return Type
 }
 
 // GetEvery returns the checker specified check interval to override every subcommand
-func (c Checker) GetEvery() time.Duration {
+func (c *Checker) GetEvery() time.Duration {
 	return c.Every.Duration
 }
 
 // Check performs checks using c according to its configuration.
 // An error is only returned if there is a configuration error.
-func (c Checker) Check() (types.Result, error) {
+func (c *Checker) Check() (types.Result, error) {
 	if c.Attempts < 1 {
 		c.Attempts = 1
 	}
@@ -145,7 +160,7 @@ func (c Checker) Check() (types.Result, error) {
 }
 
 // doChecks executes req using c.Client and returns each attempt.
-func (c Checker) doChecks(req *http.Request) types.Attempts {
+func (c *Checker) doChecks(req *http.Request) types.Attempts {
 	checks := make(types.Attempts, c.Attempts)
 	for i := 0; i < c.Attempts; i++ {
 		start := time.Now()
@@ -171,16 +186,19 @@ func (c Checker) doChecks(req *http.Request) types.Attempts {
 // computes remaining values needed to fill out the result.
 // It detects degraded (high-latency) responses and makes
 // the conclusion about the result's status.
-func (c Checker) conclude(result types.Result) types.Result {
+func (c *Checker) conclude(result types.Result) types.Result {
 	result.ThresholdRTT = c.ThresholdRTT
 
 	// Check errors (down)
 	for i := range result.Times {
 		if result.Times[i].Error != "" {
 			result.Down = true
+			healthy.WithLabelValues(result.Title, result.Endpoint).Set(float64(0))
 			return result
 		}
 	}
+
+	healthy.WithLabelValues(result.Title, result.Endpoint).Set(float64(1))
 
 	// Check round trip time (degraded)
 	if c.ThresholdRTT > 0 {
@@ -199,7 +217,7 @@ func (c Checker) conclude(result types.Result) types.Result {
 // checkDown checks whether the endpoint is down based on resp and
 // the configuration of c. It returns a non-nil error if down.
 // Note that it does not check for degraded response.
-func (c Checker) checkDown(resp *http.Response) error {
+func (c *Checker) checkDown(resp *http.Response) error {
 	// Check status code
 	var validStatus map[int]bool
 	if c.UpStatus > 0 {

@@ -11,7 +11,6 @@ import (
 	"github.com/feifeigood/checkup/check/http"
 	"github.com/feifeigood/checkup/check/icmp"
 	"github.com/feifeigood/checkup/check/tcp"
-	"github.com/feifeigood/checkup/exporter"
 	"github.com/feifeigood/checkup/notifier/mail"
 	"github.com/feifeigood/checkup/storage/fs"
 	"github.com/feifeigood/checkup/types"
@@ -285,10 +284,6 @@ type Controller struct {
 
 	checkup Checkup
 
-	exporter *exporter.CheckupExporter
-
-	// metrics
-
 	logger *logrus.Entry
 	cond   chan struct{}
 	reload chan struct{}
@@ -300,7 +295,6 @@ func NewController(configFile string, interval time.Duration) *Controller {
 	return &Controller{
 		configFile: configFile,
 		interval:   interval,
-		exporter:   exporter.NewCheckupExporter(),
 		reload:     make(chan struct{}, 1),
 		logger:     logrus.WithField("component", "controller"),
 	}
@@ -330,18 +324,6 @@ func (ctrl *Controller) runCheck(checker Checker, throttle chan struct{}) (types
 	}
 	ctrl.logger.Debugf("== (%s)%s - %s - %s", result.Type, result.Title, result.Endpoint, result.Status())
 	<-throttle
-
-	// prometheus notifier
-	ctrl.exporter.Update(result)
-
-	// checksAll.WithLabelValues(result.Type, result.Title, result.Endpoint).Inc()
-	// if result.Healthy {
-	// 	checksHealthy.WithLabelValues(result.Type, result.Title, result.Endpoint).Inc()
-	// } else if result.Degraded {
-	// 	checksDegraded.WithLabelValues(result.Type, result.Title, result.Endpoint).Inc()
-	// } else {
-	// 	checksDown.WithLabelValues(result.Type, result.Title, result.Endpoint).Inc()
-	// }
 
 	return result, nil
 }
@@ -400,13 +382,6 @@ func (ctrl *Controller) Run() {
 	ctrl.cond = make(chan struct{})
 	ctrl.checkup = c
 
-	go func() {
-		ticker := time.NewTicker(time.Duration(1 * time.Minute))
-		for range ticker.C {
-			ctrl.exporter.ProcessRetention()
-		}
-	}()
-
 	go ctrl.runCheckup()
 
 	ctrl.logger.Info("started checkup process in background")
@@ -440,38 +415,3 @@ func (ctrl *Controller) Reload() {
 	ctrl.logger.Infof("checkup configuration reload successfully.")
 	<-ctrl.reload
 }
-
-// const namespace = "checkup"
-
-// var (
-// 	checksAll = prom.NewCounterVec(prom.CounterOpts{
-// 		Namespace: namespace,
-// 		Name:      "checks_total",
-// 		Help:      "Total of checks number by checker",
-// 	}, []string{"type", "title", "endpoint"})
-
-// 	checksHealthy = prom.NewCounterVec(prom.CounterOpts{
-// 		Namespace: namespace,
-// 		Name:      "checks_healthy",
-// 		Help:      "Total of healthy checks number by checker",
-// 	}, []string{"type", "title", "endpoint"})
-
-// 	checksDegraded = prom.NewCounterVec(prom.CounterOpts{
-// 		Namespace: namespace,
-// 		Name:      "checks_degraded",
-// 		Help:      "Total of degraded checks number by checker",
-// 	}, []string{"type", "title", "endpoint"})
-
-// 	checksDown = prom.NewCounterVec(prom.CounterOpts{
-// 		Namespace: namespace,
-// 		Name:      "checks_down",
-// 		Help:      "Total of down checks number by checker",
-// 	}, []string{"type", "title", "endpoint"})
-// )
-
-// func init() {
-// 	prom.MustRegister(checksAll)
-// 	prom.MustRegister(checksHealthy)
-// 	prom.MustRegister(checksDegraded)
-// 	prom.MustRegister(checksDown)
-// }

@@ -74,7 +74,7 @@ func failOnError(err error) {
 func init() {
 	serverCmd.Flags().StringVar(&listenAddress, "web.listen-address", ":9193", "Address on which to expose metrics and web interface.")
 	serverCmd.Flags().StringVar(&metricsPath, "web.telementry-path", "/metrics", "Path under which to expose metrics.")
-	serverCmd.Flags().StringVar(&every, "every", "1m", "Runs checkups at the interval")
+	serverCmd.Flags().StringVar(&every, "every", "30s", "Runs checkups at the interval")
 	serverCmd.Flags().StringVar(&logLevel, "log-level", "info", "Setting log level")
 	serverCmd.Flags().BoolVar(&basicAuth, "basic-auth", false, "Enable basic authentication for apiserver")
 	serverCmd.Flags().StringVar(&username, "username", "", "Basic authentication username")

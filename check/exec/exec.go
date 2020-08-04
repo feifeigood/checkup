@@ -9,10 +9,27 @@ import (
 	"time"
 
 	"github.com/feifeigood/checkup/types"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/sirupsen/logrus"
 )
 
 // Type should match the package name
 const Type = "exec"
+
+var (
+	log     = logrus.WithField("component", "exec")
+	healthy *prometheus.GaugeVec
+)
+
+func init() {
+
+	healthy = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "checkup_exec_healthy",
+		Help: "Using exec checker to checks endpoint is healthy",
+	}, []string{"title", "endpoint"})
+
+	prometheus.MustRegister(healthy)
+}
 
 // Checker implements a Checker for EXEC.
 type Checker struct {
@@ -70,25 +87,25 @@ type Checker struct {
 }
 
 // New creates a new Checker instance based on json config
-func New(config json.RawMessage) (Checker, error) {
+func New(config json.RawMessage) (*Checker, error) {
 	var checker Checker
 	err := json.Unmarshal(config, &checker)
-	return checker, err
+	return &checker, err
 }
 
 // Type returns the checker package name
-func (Checker) Type() string {
+func (c *Checker) Type() string {
 	return Type
 }
 
 // GetEvery returns the checker specified check interval to override every subcommand
-func (c Checker) GetEvery() time.Duration {
+func (c *Checker) GetEvery() time.Duration {
 	return c.Every.Duration
 }
 
 // Check performs checks using c according to its configuration.
 // An error is only returned if there is a configuration error.
-func (c Checker) Check() (types.Result, error) {
+func (c *Checker) Check() (types.Result, error) {
 	if c.Attempts < 1 {
 		c.Attempts = 1
 	}
@@ -102,7 +119,7 @@ func (c Checker) Check() (types.Result, error) {
 	return c.conclude(result), nil
 }
 
-func (c Checker) doChecks() types.Attempts {
+func (c *Checker) doChecks() types.Attempts {
 	checks := make(types.Attempts, c.Attempts)
 	for i := 0; i < c.Attempts; i++ {
 		start := time.Now()
@@ -141,7 +158,7 @@ func (c Checker) doChecks() types.Attempts {
 // computes remaining values needed to fill out the result.
 // It detects degraded (high-latency) responses and makes
 // the conclusion about the result's status.
-func (c Checker) conclude(result types.Result) types.Result {
+func (c *Checker) conclude(result types.Result) types.Result {
 	result.ThresholdRTT = c.ThresholdRTT
 
 	warning := c.Raise == "warn" || c.Raise == "warning"
@@ -155,9 +172,12 @@ func (c Checker) conclude(result types.Result) types.Result {
 				return result
 			}
 			result.Down = true
+			healthy.WithLabelValues(result.Title, result.Endpoint).Set(float64(0))
 			return result
 		}
 	}
+
+	healthy.WithLabelValues(result.Title, result.Endpoint).Set(float64(1))
 
 	// Check round trip time (degraded)
 	if c.ThresholdRTT > 0 {
@@ -176,7 +196,7 @@ func (c Checker) conclude(result types.Result) types.Result {
 // checkDown checks whether the endpoint is down based on resp and
 // the configuration of c. It returns a non-nil error if down.
 // Note that it does not check for degraded response.
-func (c Checker) checkDown(body string) error {
+func (c *Checker) checkDown(body string) error {
 	// Check response body
 	if c.MustContain == "" && c.MustNotContain == "" {
 		return nil

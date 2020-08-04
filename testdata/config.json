@@ -5,7 +5,7 @@
             "endpoint_name": "www.baidu.com",
             "endpoint_url": "http://www.baidu.com",
             "proxy": "http://45.40.58.68:41276",
-            "every": "20s"
+            "every": "30s"
         },
         {
             "type": "http",
@@ -26,23 +26,27 @@
         },
         {
             "type": "icmp",
-            "endpoint_name": "icmp_healthy",
-            "endpoint_url": "128.1.112.74",
-            "tolerant_loss": 5,
-            "count": 5,
-            "timeout": "5s",
-            "interval": "1s",
-            "every": "20s"
+            "endpoint_name": "icmp_healthy_in_china",
+            "endpoint_url": "www.baidu.com",
+            "count": 100,
+            "timeout": "15s",
+            "interval": "100ms"
         },
         {
             "type": "icmp",
-            "endpoint_name": "icmp_down",
+            "endpoint_name": "icmp_healthy_in_america",
+            "endpoint_url": "128.1.112.74",
+            "count": 100,
+            "timeout": "15s",
+            "interval": "100ms"
+        },
+        {
+            "type": "icmp",
+            "endpoint_name": "icmp_down_in_private",
             "endpoint_url": "192.168.1.1",
-            "tolerant_loss": 0,
-            "count": 5,
-            "timeout": "5s",
-            "interval": "1s",
-            "every": "20s"
+            "count": 100,
+            "timeout": "15s",
+            "interval": "100ms"
         }
     ],
     "storage": {
