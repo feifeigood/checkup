@@ -76,8 +76,8 @@ func (Checker) Type() string {
 	return Type
 }
 
-// CheckInterval returns the checker specified check interval to override every subcommand
-func (c Checker) CheckInterval() time.Duration {
+// GetEvery returns the checker specified check interval to override every subcommand
+func (c Checker) GetEvery() time.Duration {
 	return c.Every.Duration
 }
 

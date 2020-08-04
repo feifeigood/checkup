@@ -65,8 +65,8 @@ type Checker struct {
 	// occurs between attempts.
 	AttemptSpacing time.Duration `json:"attempt_spacing,omitempty"`
 
-	// Interval override every subcommand interval If set.
-	Interval types.Duration `json:"interval,omitempty"`
+	// Every override every subcommand interval If set.
+	Every types.Duration `json:"every,omitempty"`
 }
 
 // New creates a new Checker instance based on json config
@@ -81,9 +81,9 @@ func (Checker) Type() string {
 	return Type
 }
 
-// CheckInterval returns the checker specified check interval to override every subcommand
-func (c Checker) CheckInterval() time.Duration {
-	return c.Interval.Duration
+// GetEvery returns the checker specified check interval to override every subcommand
+func (c Checker) GetEvery() time.Duration {
+	return c.Every.Duration
 }
 
 // Check performs checks using c according to its configuration.

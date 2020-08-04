@@ -57,8 +57,8 @@ type Checker struct {
 	// make to the endpoint in a single check.
 	Attempts int `json:"attempts,omitempty"`
 
-	// Interval override every subcommand interval If set.
-	Interval types.Duration `json:"interval,omitempty"`
+	// Every override every subcommand interval If set.
+	Every types.Duration `json:"every,omitempty"`
 }
 
 // Type returns the checker package name
@@ -73,9 +73,9 @@ func New(config json.RawMessage) (Checker, error) {
 	return checker, err
 }
 
-// CheckInterval returns the checker specified check interval to override every subcommand
-func (c Checker) CheckInterval() time.Duration {
-	return c.Interval.Duration
+// GetEvery returns the checker specified check interval to override every subcommand
+func (c Checker) GetEvery() time.Duration {
+	return c.Every.Duration
 }
 
 // Check performs checks using c according to its configuration.
