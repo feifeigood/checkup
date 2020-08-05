@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 
+## [0.2.0] 2020-08-05
+### Added
+- Support ICMP Checker
+
+### Changed
+- Implement checkup metric converted to prometheus metric and support metric expored
+
 ## [0.1.0] 2020-07-30
 ### Add
 - Support mail notifier
