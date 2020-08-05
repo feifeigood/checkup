@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 
 	checkup_prometheus_client "github.com/feifeigood/checkup/prometheus"
+	"github.com/feifeigood/checkup/prometheus/metric"
 	"github.com/feifeigood/checkup/types"
 )
 
@@ -18,19 +18,8 @@ import (
 const Type = "dns"
 
 var (
-	log     = logrus.WithField("component", "dns")
-	healthy *prometheus.GaugeVec
+	log = logrus.WithField("component", "dns")
 )
-
-func init() {
-
-	healthy = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "checkup_dns_healthy",
-		Help: "Using dns checker to checks endpoint is healthy",
-	}, []string{"title", "endpoint", "host"})
-
-	prometheus.MustRegister(healthy)
-}
 
 // Checker implements a Checker for TCP endpoints.
 type Checker struct {
@@ -53,6 +42,9 @@ type Checker struct {
 	// Attempts is how many requests the client will
 	// make to the endpoint in a single check.
 	Attempts int `json:"attempts,omitempty"`
+
+	//
+	metrics []metric.Metric
 }
 
 // New creates a new Checker instance based on json config
@@ -131,12 +123,32 @@ func (c *Checker) conclude(result types.Result) types.Result {
 	for i := range result.Times {
 		if result.Times[i].Error != "" {
 			result.Down = true
-			healthy.WithLabelValues(result.Title, result.Endpoint, c.Host).Set(float64(0))
+			m, _ := metric.New(
+				"checkup_dns",
+				map[string]string{
+					"title":    result.Title,
+					"endpoint": result.Endpoint,
+					"host":     c.Host,
+				}, map[string]interface{}{
+					"healthy": 0,
+				}, time.Now(), metric.Gauge,
+			)
+			c.metrics = append(c.metrics, m)
 			return result
 		}
 	}
 
-	healthy.WithLabelValues(result.Title, result.Endpoint, c.Host).Set(float64(1))
+	m, _ := metric.New(
+		"checkup_dns",
+		map[string]string{
+			"title":    result.Title,
+			"endpoint": result.Endpoint,
+			"host":     c.Host,
+		}, map[string]interface{}{
+			"healthy": 1,
+		}, time.Now(), metric.Gauge,
+	)
+	c.metrics = append(c.metrics, m)
 
 	// Check round trip time (degraded)
 	if c.ThresholdRTT > 0 {
@@ -153,5 +165,8 @@ func (c *Checker) conclude(result types.Result) types.Result {
 }
 
 func (c *Checker) Collect(collector checkup_prometheus_client.Collector) {
-
+	if c.metrics != nil && len(c.metrics) > 0 {
+		collector.Add(c.metrics)
+	}
+	c.metrics = []metric.Metric{}
 }

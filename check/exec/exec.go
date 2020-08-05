@@ -9,8 +9,8 @@ import (
 	"time"
 
 	checkup_prometheus_client "github.com/feifeigood/checkup/prometheus"
+	"github.com/feifeigood/checkup/prometheus/metric"
 	"github.com/feifeigood/checkup/types"
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 )
 
@@ -18,19 +18,8 @@ import (
 const Type = "exec"
 
 var (
-	log     = logrus.WithField("component", "exec")
-	healthy *prometheus.GaugeVec
+	log = logrus.WithField("component", "exec")
 )
-
-func init() {
-
-	healthy = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "checkup_exec_healthy",
-		Help: "Using exec checker to checks endpoint is healthy",
-	}, []string{"title", "endpoint"})
-
-	prometheus.MustRegister(healthy)
-}
 
 // Checker implements a Checker for EXEC.
 type Checker struct {
@@ -85,6 +74,9 @@ type Checker struct {
 
 	// Every override every subcommand interval If set.
 	Every types.Duration `json:"every,omitempty"`
+
+	//
+	metrics []metric.Metric
 }
 
 // New creates a new Checker instance based on json config
@@ -173,12 +165,30 @@ func (c *Checker) conclude(result types.Result) types.Result {
 				return result
 			}
 			result.Down = true
-			healthy.WithLabelValues(result.Title, result.Endpoint).Set(float64(0))
+			m, _ := metric.New(
+				"checkup_exec",
+				map[string]string{
+					"title":    result.Title,
+					"endpoint": result.Endpoint,
+				}, map[string]interface{}{
+					"healthy": 0,
+				}, time.Now(), metric.Gauge,
+			)
+			c.metrics = append(c.metrics, m)
 			return result
 		}
 	}
 
-	healthy.WithLabelValues(result.Title, result.Endpoint).Set(float64(1))
+	m, _ := metric.New(
+		"checkup_exec",
+		map[string]string{
+			"title":    result.Title,
+			"endpoint": result.Endpoint,
+		}, map[string]interface{}{
+			"healthy": 1,
+		}, time.Now(), metric.Gauge,
+	)
+	c.metrics = append(c.metrics, m)
 
 	// Check round trip time (degraded)
 	if c.ThresholdRTT > 0 {
@@ -212,5 +222,8 @@ func (c *Checker) checkDown(body string) error {
 }
 
 func (c *Checker) Collect(collector checkup_prometheus_client.Collector) {
-
+	if c.metrics != nil && len(c.metrics) > 0 {
+		collector.Add(c.metrics)
+	}
+	c.metrics = []metric.Metric{}
 }
