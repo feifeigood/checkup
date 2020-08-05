@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	checkup_prometheus_client "github.com/feifeigood/checkup/prometheus"
 	"github.com/feifeigood/checkup/types"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -305,4 +306,8 @@ func newProxyClient(proxy string) (*http.Client, error) {
 		},
 		Timeout: 10 * time.Second,
 	}, nil
+}
+
+func (c *Checker) Collect(collector checkup_prometheus_client.Collector) {
+
 }

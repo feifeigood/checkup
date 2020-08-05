@@ -10,8 +10,9 @@ import (
 	"net"
 	"time"
 
+	checkup_prometheus_client "github.com/feifeigood/checkup/prometheus"
+	"github.com/feifeigood/checkup/prometheus/metric"
 	"github.com/feifeigood/checkup/types"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -21,20 +22,6 @@ var (
 
 // Type should match the package name
 const Type = "tcp"
-
-var (
-	healthy *prometheus.GaugeVec
-)
-
-func init() {
-
-	healthy = prometheus.NewGaugeVec(prometheus.GaugeOpts{
-		Name: "checkup_tcp_healthy",
-		Help: "Using tcp checker to checks endpoint is healthy",
-	}, []string{"title", "endpoint"})
-
-	prometheus.MustRegister(healthy)
-}
 
 // Checker implements a Checker for TCP endpoints.
 type Checker struct {
@@ -74,6 +61,9 @@ type Checker struct {
 
 	// Every override every subcommand interval If set.
 	Every types.Duration `json:"every,omitempty"`
+
+	//
+	metrics []metric.Metric
 }
 
 // Type returns the checker package name
@@ -85,6 +75,7 @@ func (c *Checker) Type() string {
 func New(config json.RawMessage) (*Checker, error) {
 	var checker Checker
 	err := json.Unmarshal(config, &checker)
+	checker.metrics = []metric.Metric{}
 	return &checker, err
 }
 
@@ -176,12 +167,30 @@ func (c *Checker) conclude(result types.Result) types.Result {
 	for i := range result.Times {
 		if result.Times[i].Error != "" {
 			result.Down = true
-			healthy.WithLabelValues(result.Title, result.Endpoint).Set(float64(0))
+			m, _ := metric.New(
+				"checkup_tcp",
+				map[string]string{
+					"title":    result.Title,
+					"endpoint": result.Endpoint,
+				}, map[string]interface{}{
+					"healthy": 0,
+				}, time.Now(), metric.Gauge,
+			)
+			c.metrics = append(c.metrics, m)
 			return result
 		}
 	}
 
-	healthy.WithLabelValues(result.Title, result.Endpoint).Set(float64(1))
+	m, _ := metric.New(
+		"checkup_tcp",
+		map[string]string{
+			"title":    result.Title,
+			"endpoint": result.Endpoint,
+		}, map[string]interface{}{
+			"healthy": 1,
+		}, time.Now(), metric.Gauge,
+	)
+	c.metrics = append(c.metrics, m)
 
 	// Check round trip time (degraded)
 	if c.ThresholdRTT.Duration > 0 {
@@ -195,4 +204,11 @@ func (c *Checker) conclude(result types.Result) types.Result {
 
 	result.Healthy = true
 	return result
+}
+
+func (c *Checker) Collect(collector checkup_prometheus_client.Collector) {
+	if c.metrics != nil && len(c.metrics) > 0 {
+		collector.Add(c.metrics)
+	}
+	c.metrics = []metric.Metric{}
 }

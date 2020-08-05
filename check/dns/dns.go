@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 
+	checkup_prometheus_client "github.com/feifeigood/checkup/prometheus"
 	"github.com/feifeigood/checkup/types"
 )
 
@@ -149,4 +150,8 @@ func (c *Checker) conclude(result types.Result) types.Result {
 
 	result.Healthy = true
 	return result
+}
+
+func (c *Checker) Collect(collector checkup_prometheus_client.Collector) {
+
 }

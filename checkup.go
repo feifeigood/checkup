@@ -12,8 +12,11 @@ import (
 	"github.com/feifeigood/checkup/check/icmp"
 	"github.com/feifeigood/checkup/check/tcp"
 	"github.com/feifeigood/checkup/notifier/mail"
+	checkup_prometheus_client "github.com/feifeigood/checkup/prometheus"
+	v2 "github.com/feifeigood/checkup/prometheus/v2"
 	"github.com/feifeigood/checkup/storage/fs"
 	"github.com/feifeigood/checkup/types"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 )
 
@@ -27,6 +30,7 @@ type Checker interface {
 	Type() string
 	Check() (types.Result, error)
 	GetEvery() time.Duration
+	Collect(checkup_prometheus_client.Collector)
 }
 
 // Notifier can notify a types.Result.
@@ -282,7 +286,8 @@ type Controller struct {
 	configFile string
 	interval   time.Duration
 
-	checkup Checkup
+	checkup   Checkup
+	collector checkup_prometheus_client.Collector
 
 	logger *logrus.Entry
 	cond   chan struct{}
@@ -292,10 +297,12 @@ type Controller struct {
 
 // NewController creates a checkup controller object
 func NewController(configFile string, interval time.Duration) *Controller {
+
 	return &Controller{
 		configFile: configFile,
 		interval:   interval,
 		reload:     make(chan struct{}, 1),
+		collector:  v2.NewCollector(time.Duration(2 * time.Minute)),
 		logger:     logrus.WithField("component", "controller"),
 	}
 }
@@ -324,6 +331,8 @@ func (ctrl *Controller) runCheck(checker Checker, throttle chan struct{}) (types
 	}
 	ctrl.logger.Debugf("== (%s)%s - %s - %s", result.Type, result.Title, result.Endpoint, result.Status())
 	<-throttle
+
+	checker.Collect(ctrl.collector)
 
 	return result, nil
 }
@@ -365,6 +374,9 @@ func (ctrl *Controller) runCheckup() {
 
 // Run start background controller processes
 func (ctrl *Controller) Run() {
+	// register prometheus collector
+	prometheus.MustRegister(ctrl.collector)
+
 	c, err := ctrl.initCheckup()
 	if err != nil {
 		ctrl.logger.Fatalf("could not init checkup: %v", err)

@@ -6,6 +6,7 @@ require (
 	github.com/antonfisher/nested-logrus-formatter v1.1.0
 	github.com/emicklei/go-restful v2.13.0+incompatible
 	github.com/fatih/color v1.7.0
+	github.com/golang/protobuf v1.4.2
 	github.com/mattn/go-colorable v0.1.7 // indirect
 	github.com/miekg/dns v1.1.31
 	github.com/prometheus/client_golang v1.0.0
@@ -14,6 +15,7 @@ require (
 	github.com/sirupsen/logrus v1.2.0
 	github.com/spf13/cobra v1.0.0
 	github.com/spf13/pflag v1.0.5 // indirect
+	github.com/stretchr/testify v1.6.1
 	golang.org/x/crypto v0.0.0-20200728195943-123391ffb6de
 	golang.org/x/net v0.0.0-20190923162816-aa69164e4478
 	golang.org/x/sys v0.0.0-20200625212154-ddb9806d33ae // indirect

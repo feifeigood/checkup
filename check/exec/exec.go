@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	checkup_prometheus_client "github.com/feifeigood/checkup/prometheus"
 	"github.com/feifeigood/checkup/types"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
@@ -208,4 +209,8 @@ func (c *Checker) checkDown(body string) error {
 		return fmt.Errorf("response contains '%s'", c.MustNotContain)
 	}
 	return nil
+}
+
+func (c *Checker) Collect(collector checkup_prometheus_client.Collector) {
+
 }
