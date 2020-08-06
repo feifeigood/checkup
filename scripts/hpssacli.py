@@ -9,7 +9,7 @@ def isok(state):
     states = {
         "OK": 1
     }
-    return states.get(state, 0)
+    return states.get(state.strip(), 0)
 
 
 def tobytes(inp):
