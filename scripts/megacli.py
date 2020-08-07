@@ -1,8 +1,33 @@
 #!/usr/bin/python
 
-import subprocess
-import re
 import json
+import re
+from subprocess import PIPE, Popen
+
+
+# Exception classes used by this module.
+class CalledProcessError(Exception):
+    def __init__(self, returncode, cmd, output=None):
+        self.returncode = returncode
+        self.cmd = cmd
+        self.output = output
+
+    def __str__(self):
+        return "Command '%s' returned non-zero exit status %d" % (self.cmd, self.returncode)
+
+
+def check_output(*popenargs, **kwargs):
+    if 'stdout' in kwargs:
+        raise ValueError('stdout argument not allowed, it will be overridden.')
+    process = Popen(stdout=PIPE, *popenargs, **kwargs)
+    output, unused_err = process.communicate()
+    retcode = process.poll()
+    if retcode:
+        cmd = kwargs.get("args")
+        if cmd is None:
+            cmd = popenargs[0]
+        raise CalledProcessError(retcode, cmd, output=output)
+    return output
 
 
 def yesno(state):
@@ -36,9 +61,9 @@ def tobytes(inp):
 
 
 def main():
-    info = subprocess.check_output(
+    info = check_output(
         ['/opt/MegaRAID/MegaCli/MegaCli64', '-AdpAllInfo', '-aAll', '-nolog']).decode('utf-8').splitlines()
-    pdlist = subprocess.check_output(
+    pdlist = check_output(
         ['/opt/MegaRAID/MegaCli/MegaCli64', '-PdList', '-aAll', '-nolog']).decode('utf-8').splitlines()
     out = {}
     adapter = None
@@ -302,7 +327,7 @@ def main():
         print("# HELP " + k + " " + v['help'])
         print("# TYPE " + k + " " + v['type'])
         for m in v['metrics']:
-            print (str(k) + '{' + ', '.join(["{}=\"{}\"".format(str(l), str(
+            print (str(k) + '{' + ', '.join(["{0}=\"{1}\"".format(str(l), str(
                 m['labels'][l])) for l in sorted(m['labels'])]) + '} ' + str(m['val']))
 
 
